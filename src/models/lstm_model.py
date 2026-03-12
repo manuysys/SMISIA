@@ -2,6 +2,7 @@
 SMISIA — Modelo LSTM/GRU (Fase B)
 Predicción temporal de riesgo para silobolsas.
 """
+
 import logging
 import os
 import numpy as np
@@ -141,17 +142,19 @@ def prepare_sequences(
                 future_idx = i + h_days * readings_per_day
                 if future_idx < len(labels):
                     # ¿Hay evento problema/critico en la ventana futura?
-                    window = labels[i : future_idx]
+                    window = labels[i:future_idx]
                     target.append(float(window.max()))
                 else:
                     target.append(0.0)
 
             sequences.append(seq)
             targets.append(target)
-            meta.append({
-                "silo_id": silo_id,
-                "timestamp": group.iloc[i]["timestamp"],
-            })
+            meta.append(
+                {
+                    "silo_id": silo_id,
+                    "timestamp": group.iloc[i]["timestamp"],
+                }
+            )
 
     if not sequences:
         return np.array([]), np.array([]), []
@@ -177,7 +180,8 @@ def train_lstm(
     horizons = lstm_cfg["prediction_horizons_days"]
 
     sequences, targets, meta = prepare_sequences(
-        df, feature_cols,
+        df,
+        feature_cols,
         seq_length=seq_length,
         horizons_days=horizons,
     )

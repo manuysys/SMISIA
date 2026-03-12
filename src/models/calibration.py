@@ -1,6 +1,7 @@
 """
 SMISIA — Calibración de Probabilidades y Detección de Drift
 """
+
 import logging
 import numpy as np
 from sklearn.calibration import CalibratedClassifierCV
@@ -25,12 +26,14 @@ class XGBWrapper(BaseEstimator, ClassifierMixin):
 
     def predict(self, X):
         import xgboost as xgb
+
         dmatrix = xgb.DMatrix(X)
         probs = self.model.predict(dmatrix)
         return probs.argmax(axis=1)
 
     def predict_proba(self, X):
         import xgboost as xgb
+
         dmatrix = xgb.DMatrix(X)
         return self.model.predict(dmatrix)
 
@@ -46,9 +49,7 @@ def calibrate_probabilities(
     Calibra las probabilidades del modelo usando isotonic o Platt scaling.
     """
     wrapper = XGBWrapper(model, feature_cols)
-    calibrated = CalibratedClassifierCV(
-        wrapper, method=method, cv="prefit"
-    )
+    calibrated = CalibratedClassifierCV(wrapper, method=method, cv="prefit")
     X_val = np.nan_to_num(X_val, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
     calibrated.fit(X_val, y_val)
     logger.info(f"Calibración {method} completada")
@@ -67,9 +68,7 @@ def compute_psi(
     eps = 1e-6
 
     # Binning basado en la distribución de referencia
-    breakpoints = np.percentile(
-        reference, np.linspace(0, 100, n_bins + 1)
-    )
+    breakpoints = np.percentile(reference, np.linspace(0, 100, n_bins + 1))
     breakpoints[0] = -np.inf
     breakpoints[-1] = np.inf
 
@@ -112,7 +111,9 @@ def check_drift(
         results["drift_detected"] = avg_psi > threshold
 
     if results["drift_detected"]:
-        logger.warning(f"⚠️ Drift detectado! PSI: {results.get('avg_psi', results.get('overall_psi', 0)):.4f}")
+        logger.warning(
+            f"⚠️ Drift detectado! PSI: {results.get('avg_psi', results.get('overall_psi', 0)):.4f}"
+        )
     else:
         logger.info("Sin drift significativo")
 

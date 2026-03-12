@@ -2,6 +2,7 @@
 SMISIA — Modelo XGBoost (Fase A)
 Clasificador multi-clase para estado de silobolsa.
 """
+
 import logging
 import os
 import numpy as np
@@ -26,13 +27,22 @@ REVERSE_MAP = {i: name for i, name in enumerate(CLASS_NAMES)}
 def get_feature_columns(df: pd.DataFrame) -> list:
     """Obtiene las columnas de features (excluye metadatos)."""
     exclude = {
-        "silo_id", "timestamp", "label", "heuristic_label",
-        "label_source", "fill_date", "imputed", "needs_review",
+        "silo_id",
+        "timestamp",
+        "label",
+        "heuristic_label",
+        "label_source",
+        "fill_date",
+        "imputed",
+        "needs_review",
         "model_confidence",
     }
-    return [c for c in df.columns if c not in exclude and df[c].dtype in [
-        np.float64, np.float32, np.int64, np.int32, float, int
-    ]]
+    return [
+        c
+        for c in df.columns
+        if c not in exclude
+        and df[c].dtype in [np.float64, np.float32, np.int64, np.int32, float, int]
+    ]
 
 
 def compute_class_weights(y: np.ndarray, n_classes: int = 4) -> dict:
@@ -117,12 +127,14 @@ def train_xgboost(
             y_val, y_pred, target_names=CLASS_NAMES, output_dict=True
         )
 
-        cv_results.append({
-            "fold": fold,
-            "macro_f1": fold_f1,
-            "report": fold_report,
-            "best_iteration": model.best_iteration,
-        })
+        cv_results.append(
+            {
+                "fold": fold,
+                "macro_f1": fold_f1,
+                "report": fold_report,
+                "best_iteration": model.best_iteration,
+            }
+        )
         logger.info(f"Fold {fold}: macro_F1 = {fold_f1:.4f}")
 
     # Entrenar modelo final con todos los datos
@@ -209,7 +221,8 @@ def train_bootstrap_ensemble(
         dtrain = xgb.DMatrix(X_boot, label=y_boot, weight=sw_boot)
 
         model = xgb.train(
-            params, dtrain,
+            params,
+            dtrain,
             num_boost_round=xgb_cfg["n_estimators"] // 2,
             verbose_eval=False,
         )
@@ -251,8 +264,7 @@ def predict_with_uncertainty(
         "confidence": confidence,
         "uncertainty_std": uncertainty,
         "raw_scores": {
-            name: mean_probs[:, i].tolist()
-            for i, name in enumerate(CLASS_NAMES)
+            name: mean_probs[:, i].tolist() for i, name in enumerate(CLASS_NAMES)
         },
     }
 

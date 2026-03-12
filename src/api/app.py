@@ -2,6 +2,7 @@
 SMISIA — Aplicación FastAPI
 Punto de entrada de la API REST.
 """
+
 import logging
 import os
 import sys
@@ -64,7 +65,9 @@ def create_app(config_path: str = None) -> FastAPI:
             feat_path = os.path.join(models_dir, "feature_columns.joblib")
             if os.path.exists(feat_path):
                 state["feature_columns"] = joblib.load(feat_path)
-                logger.info(f"✓ {len(state['feature_columns'])} feature columns cargadas")
+                logger.info(
+                    f"✓ {len(state['feature_columns'])} feature columns cargadas"
+                )
 
             imp_path = os.path.join(models_dir, "feature_importance.joblib")
             if os.path.exists(imp_path):
@@ -73,7 +76,9 @@ def create_app(config_path: str = None) -> FastAPI:
             boot_path = os.path.join(models_dir, "bootstrap_models.joblib")
             if os.path.exists(boot_path):
                 state["bootstrap_models"] = joblib.load(boot_path)
-                logger.info(f"✓ {len(state['bootstrap_models'])} bootstrap models cargados")
+                logger.info(
+                    f"✓ {len(state['bootstrap_models'])} bootstrap models cargados"
+                )
 
             anom_path = os.path.join(models_dir, "anomaly_model.joblib")
             if os.path.exists(anom_path):

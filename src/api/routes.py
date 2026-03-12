@@ -2,6 +2,7 @@
 SMISIA — Rutas de la API REST
 Implementa: /infer, /status, /batch_infer, /explain, /metrics
 """
+
 import logging
 import time
 import uuid
@@ -75,17 +76,19 @@ def _readings_to_dataframe(request: InferRequest) -> pd.DataFrame:
     """Convierte lecturas del request a DataFrame."""
     records = []
     for r in request.recent_readings:
-        records.append({
-            "silo_id": request.silo_id,
-            "timestamp": r.timestamp,
-            "temperature_c": r.temperature_c,
-            "humidity_pct": r.humidity_pct,
-            "co2_ppm": r.co2_ppm,
-            "nh3_ppm": r.nh3_ppm,
-            "battery_pct": r.battery_pct,
-            "rssi": r.rssi,
-            "snr": r.snr,
-        })
+        records.append(
+            {
+                "silo_id": request.silo_id,
+                "timestamp": r.timestamp,
+                "temperature_c": r.temperature_c,
+                "humidity_pct": r.humidity_pct,
+                "co2_ppm": r.co2_ppm,
+                "nh3_ppm": r.nh3_ppm,
+                "battery_pct": r.battery_pct,
+                "rssi": r.rssi,
+                "snr": r.snr,
+            }
+        )
     df = pd.DataFrame(records)
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
     df["fill_date"] = request.fill_date or "2025-10-01T00:00:00+00:00"
@@ -230,6 +233,7 @@ def _run_inference(df: pd.DataFrame, request: InferRequest) -> InferResponse:
 # Endpoints
 # ---------------------------------------------------------------
 
+
 @router.post("/infer", response_model=InferResponse)
 async def infer(request: InferRequest):
     """Inferencia para una silobolsa individual."""
@@ -290,9 +294,7 @@ async def explain(
             detail=f"Sin datos de inferencia para silo {silo_id}. Ejecute /infer primero.",
         )
 
-    top_drivers = [
-        ExplanationItem(**e) for e in cached.get("explanations", [])
-    ]
+    top_drivers = [ExplanationItem(**e) for e in cached.get("explanations", [])]
 
     return ExplainResponse(
         silo_id=silo_id,
@@ -333,6 +335,7 @@ async def chat(request: ChatRequest):
     # Intentar extraer silo_id del mensaje si no se proporcionó
     if not silo_id:
         import re
+
         match = re.search(r"silo(?:bolsa)?\s+(\w+)", request.message, re.IGNORECASE)
         if match:
             silo_id = match.group(1)

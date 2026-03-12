@@ -2,6 +2,7 @@
 SMISIA — Configuration Loader
 Carga config.yml y provee acceso global a la configuración.
 """
+
 import os
 import yaml
 from pathlib import Path

@@ -2,6 +2,7 @@
 SMISIA — Validadores de Datos
 Validación de esquema, rangos físicos y timestamps.
 """
+
 import logging
 import pandas as pd
 import numpy as np
@@ -9,11 +10,18 @@ from src.config import get_config
 
 logger = logging.getLogger("smisia.validators")
 
+
 def validate_schema(df: pd.DataFrame) -> pd.DataFrame:
     """Verifica que el DataFrame tenga las columnas requeridas."""
     required = [
-        "silo_id", "timestamp", "temperature_c", "humidity_pct",
-        "co2_ppm", "battery_pct", "rssi", "snr",
+        "silo_id",
+        "timestamp",
+        "temperature_c",
+        "humidity_pct",
+        "co2_ppm",
+        "battery_pct",
+        "rssi",
+        "snr",
     ]
     missing = [c for c in required if c not in df.columns]
     if missing:
@@ -76,9 +84,7 @@ def filter_physical_ranges(df: pd.DataFrame) -> pd.DataFrame:
             total_removed += n_out
 
     if total_removed > 0:
-        logger.info(
-            f"Total lecturas fuera de rango convertidas a NaN: {total_removed}"
-        )
+        logger.info(f"Total lecturas fuera de rango convertidas a NaN: {total_removed}")
 
     return df
 

@@ -2,6 +2,7 @@
 SMISIA — Feature Engineering
 Calcula features agregadas en ventanas móviles para cada silo.
 """
+
 import logging
 import pandas as pd
 import numpy as np
@@ -53,17 +54,15 @@ def compute_rolling_features(df: pd.DataFrame) -> pd.DataFrame:
                 first_val = series.rolling(win, min_periods=1).apply(
                     lambda x: x.iloc[0] if len(x) > 0 else np.nan, raw=False
                 )
-                silo_feats[f"{prefix}_slope"] = (
-                    (series - first_val) / max(window_h, 1)
-                )
+                silo_feats[f"{prefix}_slope"] = (series - first_val) / max(window_h, 1)
 
                 # Missing count y porcentaje
                 nan_count = series.isna().rolling(win, min_periods=1).sum()
                 total_count = series.rolling(win, min_periods=1).count()
                 rolling_size = series.rolling(win, min_periods=1).apply(len, raw=False)
                 silo_feats[f"{prefix}_count_missing"] = nan_count
-                silo_feats[f"{prefix}_pct_missing"] = (
-                    nan_count / rolling_size.clip(lower=1)
+                silo_feats[f"{prefix}_pct_missing"] = nan_count / rolling_size.clip(
+                    lower=1
                 )
 
         silo_feats["silo_id"] = silo_id
@@ -107,8 +106,10 @@ def compute_humidity_counters(df: pd.DataFrame) -> pd.DataFrame:
         diffs = np.diff(humidity, prepend=humidity[0])
         increasing = (diffs > 0).astype(int)
         # Max run in 24h window
-        consec = pd.Series(increasing).rolling(12, min_periods=1).apply(
-            _max_consecutive_ones, raw=True
+        consec = (
+            pd.Series(increasing)
+            .rolling(12, min_periods=1)
+            .apply(_max_consecutive_ones, raw=True)
         )
         df.loc[idx, col_name] = consec.values * 2
 
@@ -181,7 +182,9 @@ def compute_static_features(df: pd.DataFrame) -> pd.DataFrame:
         fill_dates = pd.to_datetime(df["fill_date"], errors="coerce", utc=True)
         if df["timestamp"].dt.tz is None:
             df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
-        df["days_since_fill"] = (df["timestamp"] - fill_dates).dt.total_seconds() / 86400
+        df["days_since_fill"] = (
+            df["timestamp"] - fill_dates
+        ).dt.total_seconds() / 86400
         df["days_since_fill"] = df["days_since_fill"].clip(lower=0).fillna(0)
     else:
         df["days_since_fill"] = 0
@@ -223,17 +226,29 @@ def run_feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("Features estáticas calculadas")
 
     # Rellenar NaN restantes con 0 para features calculadas
-    feature_cols = [c for c in df.columns if any(
-        c.startswith(p) for p in [
-            "temperature_c_", "humidity_pct_", "co2_ppm_", "nh3_ppm_",
-            "battery_pct_", "hours_humidity", "consecutive_hours",
-            "temp_and_humidity_up", "co2_spike_recent",
-            "days_since_fill", "rssi_mean", "snr_mean", "pct_imputed",
-        ]
-    )]
+    feature_cols = [
+        c
+        for c in df.columns
+        if any(
+            c.startswith(p)
+            for p in [
+                "temperature_c_",
+                "humidity_pct_",
+                "co2_ppm_",
+                "nh3_ppm_",
+                "battery_pct_",
+                "hours_humidity",
+                "consecutive_hours",
+                "temp_and_humidity_up",
+                "co2_spike_recent",
+                "days_since_fill",
+                "rssi_mean",
+                "snr_mean",
+                "pct_imputed",
+            ]
+        )
+    ]
     df[feature_cols] = df[feature_cols].fillna(0)
 
-    logger.info(
-        f"Feature engineering completo: {len(feature_cols)} features generadas"
-    )
+    logger.info(f"Feature engineering completo: {len(feature_cols)} features generadas")
     return df

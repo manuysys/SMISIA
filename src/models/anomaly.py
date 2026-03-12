@@ -2,6 +2,7 @@
 SMISIA — Detección de Anomalías (Fase C)
 Isolation Forest entrenado sobre datos "bien".
 """
+
 import logging
 import os
 import numpy as np

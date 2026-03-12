@@ -2,6 +2,7 @@
 SMISIA — Limpieza e Imputación de Datos
 Pipeline de preprocesamiento completo.
 """
+
 import logging
 import pandas as pd
 import numpy as np
@@ -27,8 +28,11 @@ def impute_gaps(
     - > ffill_max_hours: dejar NaN (se usa como 'missing_pct')
     """
     sensor_cols = [
-        "temperature_c", "humidity_pct", "co2_ppm",
-        "nh3_ppm", "battery_pct",
+        "temperature_c",
+        "humidity_pct",
+        "co2_ppm",
+        "nh3_ppm",
+        "battery_pct",
     ]
     sensor_cols = [c for c in sensor_cols if c in df.columns]
 
@@ -102,7 +106,9 @@ def _compute_gap_sizes(is_nan: np.ndarray, timestamps: np.ndarray) -> np.ndarray
             elif gap_start > 0:
                 hours = (ts[-1] - ts[gap_start - 1]).total_seconds() / 3600
             else:
-                hours = (ts[gap_end] - ts[0]).total_seconds() / 3600 if gap_end < n else 999
+                hours = (
+                    (ts[gap_end] - ts[0]).total_seconds() / 3600 if gap_end < n else 999
+                )
 
             # Asignar a cada posición del gap
             gap_hours[gap_start:gap_end] = hours

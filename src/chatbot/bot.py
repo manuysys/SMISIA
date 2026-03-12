@@ -2,10 +2,10 @@
 SMISIA — Chatbot Backend
 Formatea respuestas naturales en español a partir de datos de inferencia.
 """
+
 import re
 from typing import Optional
 from src.api.schemas import ChatResponse
-
 
 # Emojis por estado
 STATUS_EMOJI = {
@@ -72,10 +72,15 @@ def format_chat_response(
     message_lower = message.lower().strip()
 
     # Detectar intención
-    if any(kw in message_lower for kw in ["estado", "cómo está", "como esta", "status"]):
+    if any(
+        kw in message_lower for kw in ["estado", "cómo está", "como esta", "status"]
+    ):
         return _format_status(silo_id, cached_data)
 
-    elif any(kw in message_lower for kw in ["empeorar", "predicción", "prediccion", "futuro", "va a"]):
+    elif any(
+        kw in message_lower
+        for kw in ["empeorar", "predicción", "prediccion", "futuro", "va a"]
+    ):
         return _format_prediction(message_lower, silo_id, cached_data)
 
     elif any(kw in message_lower for kw in ["tendencia", "trend", "historial"]):
@@ -180,7 +185,9 @@ def _format_prediction(
     explanations = data.get("explanations", [])
     if explanations:
         top = explanations[0]
-        driver_name = top.get("feature", "N/A") if isinstance(top, dict) else top.feature
+        driver_name = (
+            top.get("feature", "N/A") if isinstance(top, dict) else top.feature
+        )
         driver = f"subida continua de {driver_name}"
     else:
         driver = "múltiples factores combinados"

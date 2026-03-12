@@ -2,6 +2,7 @@
 SMISIA — Labeling Heurístico
 Genera etiquetas proxy cuando no hay labels reales.
 """
+
 import logging
 import pandas as pd
 import numpy as np
@@ -30,18 +31,18 @@ def apply_heuristic_labels(df: pd.DataFrame) -> pd.DataFrame:
 
     # Condición 1: humidity + CO2 + delta
     hum_col_24h_slope = "humidity_pct_24h_slope"
-    cond_crit_1 = (
-        (df["humidity_pct"] > crit["humidity_min"])
-        & (df["co2_ppm"] > crit["co2_min"])
+    cond_crit_1 = (df["humidity_pct"] > crit["humidity_min"]) & (
+        df["co2_ppm"] > crit["co2_min"]
     )
     if hum_col_24h_slope in df.columns:
         # delta_24h > 3 pp → slope * 24 > 3
-        cond_crit_1 = cond_crit_1 & (df[hum_col_24h_slope] * 24 > crit["humidity_delta_24h_min"])
+        cond_crit_1 = cond_crit_1 & (
+            df[hum_col_24h_slope] * 24 > crit["humidity_delta_24h_min"]
+        )
 
     # Condición 2: temp extrema + CO2
-    cond_crit_2 = (
-        (df["temperature_c"] > crit["temperature_max_alt"])
-        & (df["co2_ppm"] > crit["co2_elevated_alt"])
+    cond_crit_2 = (df["temperature_c"] > crit["temperature_max_alt"]) & (
+        df["co2_ppm"] > crit["co2_elevated_alt"]
     )
 
     df.loc[cond_crit_1 | cond_crit_2, "heuristic_label"] = "critico"
@@ -51,34 +52,26 @@ def apply_heuristic_labels(df: pd.DataFrame) -> pd.DataFrame:
     hum_range = prob["humidity_range"]
     co2_range = prob["co2_range"]
 
-    cond_prob_hum = (
-        (df["humidity_pct"] >= hum_range[0])
-        & (df["humidity_pct"] <= hum_range[1])
+    cond_prob_hum = (df["humidity_pct"] >= hum_range[0]) & (
+        df["humidity_pct"] <= hum_range[1]
     )
     if hum_col_24h_slope in df.columns:
         cond_prob_hum = cond_prob_hum & (df[hum_col_24h_slope] > 0)
 
-    cond_prob_co2 = (
-        (df["co2_ppm"] >= co2_range[0])
-        & (df["co2_ppm"] <= co2_range[1])
-    )
+    cond_prob_co2 = (df["co2_ppm"] >= co2_range[0]) & (df["co2_ppm"] <= co2_range[1])
 
     # Solo aplicar si no es ya crítico
     is_not_critical = df["heuristic_label"] != "critico"
-    df.loc[(cond_prob_hum | cond_prob_co2) & is_not_critical, "heuristic_label"] = "problema"
+    df.loc[(cond_prob_hum | cond_prob_co2) & is_not_critical, "heuristic_label"] = (
+        "problema"
+    )
 
     # ------ TOLERABLE ------
     # Lecturas ligeramente fuera de rango
     cond_tol = (
-        (
-            (df["humidity_pct"] > 14) & (df["humidity_pct"] <= hum_range[0])
-        )
-        | (
-            (df["co2_ppm"] > 800) & (df["co2_ppm"] <= co2_range[0])
-        )
-        | (
-            (df["temperature_c"] > 35) & (df["temperature_c"] <= 45)
-        )
+        ((df["humidity_pct"] > 14) & (df["humidity_pct"] <= hum_range[0]))
+        | ((df["co2_ppm"] > 800) & (df["co2_ppm"] <= co2_range[0]))
+        | ((df["temperature_c"] > 35) & (df["temperature_c"] <= 45))
     )
     is_bien = df["heuristic_label"] == "bien"
     df.loc[cond_tol & is_bien, "heuristic_label"] = "tolerable"
