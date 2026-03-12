@@ -1,7 +1,0 @@
-﻿eval.py:185:15: F541 f-string is missing placeholders
-generate_dataset.py:175:21: E203 whitespace before ':'
-generate_dataset.py:287:11: F541 f-string is missing placeholders
-generate_dataset.py:299:11: F541 f-string is missing placeholders
-generate_dataset.py:304:11: F541 f-string is missing placeholders
-src/api\schemas.py:7:1: F401 'datetime.datetime' imported but unused
-src/models\lstm_model.py:139:40: E203 whitespace before ':'
