@@ -45,7 +45,7 @@ def validate_timestamps(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
     # Parsear timestamps
-    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
+    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True, format="ISO8601")
 
     # Rechazar filas con timestamp inválido
     invalid_mask = df["timestamp"].isna()

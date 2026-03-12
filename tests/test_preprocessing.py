@@ -44,6 +44,8 @@ class TestValidators:
     def test_validate_timestamps(self):
         from src.preprocessing.validators import validate_timestamps
         df = make_sample_df()
+        # Cast to object to avoid FutureWarning when setting non-date string
+        df["timestamp"] = df["timestamp"].astype(object)
         df.loc[0, "timestamp"] = "not-a-date"
         result = validate_timestamps(df)
         assert len(result) == len(df) - 1

@@ -28,7 +28,8 @@ def compute_rolling_features(df: pd.DataFrame) -> pd.DataFrame:
 
     for silo_id, group in df.groupby("silo_id"):
         group = group.sort_index()
-        silo_feats = pd.DataFrame(index=group.index)
+        # Usamos un diccionario para recolectar columnas y evitar fragmentación
+        new_cols = {}
 
         for window_h in windows:
             window_str = f"{window_h}h"
@@ -41,30 +42,52 @@ def compute_rolling_features(df: pd.DataFrame) -> pd.DataFrame:
                 series = group[var]
                 prefix = f"{var}_{window_str}"
 
+                if series.isna().all():
+                    # Si toda la serie es NaN, los resultados rolling también lo son
+                    nan_series = pd.Series(np.nan, index=group.index)
+                    new_cols[f"{prefix}_mean"] = nan_series
+                    new_cols[f"{prefix}_median"] = nan_series
+                    new_cols[f"{prefix}_min"] = nan_series
+                    new_cols[f"{prefix}_max"] = nan_series
+                    new_cols[f"{prefix}_std"] = pd.Series(0.0, index=group.index)
+                    new_cols[f"{prefix}_skew"] = pd.Series(0.0, index=group.index)
+                    new_cols[f"{prefix}_slope"] = nan_series
+                    new_cols[f"{prefix}_count_missing"] = pd.Series(
+                        float(window_h), index=group.index
+                    )  # Aproximación
+                    new_cols[f"{prefix}_pct_missing"] = pd.Series(
+                        1.0, index=group.index
+                    )
+                    continue
+
                 # Estadísticas básicas
                 rolling = series.rolling(win, min_periods=1)
-                silo_feats[f"{prefix}_mean"] = rolling.mean()
-                silo_feats[f"{prefix}_median"] = rolling.median()
-                silo_feats[f"{prefix}_min"] = rolling.min()
-                silo_feats[f"{prefix}_max"] = rolling.max()
-                silo_feats[f"{prefix}_std"] = rolling.std().fillna(0)
-                silo_feats[f"{prefix}_skew"] = rolling.skew().fillna(0)
+                new_cols[f"{prefix}_mean"] = rolling.mean()
+                new_cols[f"{prefix}_median"] = rolling.median()
+                new_cols[f"{prefix}_min"] = rolling.min()
+                new_cols[f"{prefix}_max"] = rolling.max()
+                new_cols[f"{prefix}_std"] = rolling.std().fillna(0)
+                new_cols[f"{prefix}_skew"] = rolling.skew().fillna(0)
 
                 # Slope (valor al final - valor al inicio) / ventana en horas
                 first_val = series.rolling(win, min_periods=1).apply(
                     lambda x: x.iloc[0] if len(x) > 0 else np.nan, raw=False
                 )
-                silo_feats[f"{prefix}_slope"] = (series - first_val) / max(window_h, 1)
+                new_cols[f"{prefix}_slope"] = (series - first_val) / max(
+                    window_h, 1
+                )
 
                 # Missing count y porcentaje
                 nan_count = series.isna().rolling(win, min_periods=1).sum()
-                total_count = series.rolling(win, min_periods=1).count()
-                rolling_size = series.rolling(win, min_periods=1).apply(len, raw=False)
-                silo_feats[f"{prefix}_count_missing"] = nan_count
-                silo_feats[f"{prefix}_pct_missing"] = nan_count / rolling_size.clip(
+                rolling_size = series.rolling(win, min_periods=1).apply(
+                    len, raw=False
+                )
+                new_cols[f"{prefix}_count_missing"] = nan_count
+                new_cols[f"{prefix}_pct_missing"] = nan_count / rolling_size.clip(
                     lower=1
                 )
 
+        silo_feats = pd.DataFrame(new_cols, index=group.index)
         silo_feats["silo_id"] = silo_id
         all_features.append(silo_feats)
 
@@ -88,10 +111,12 @@ def compute_humidity_counters(df: pd.DataFrame) -> pd.DataFrame:
     thresholds = feat_cfg["humidity_thresholds_pct"]
 
     df = df.sort_values(["silo_id", "timestamp"]).copy()
+    all_counters = []
 
     for silo_id, group in df.groupby("silo_id"):
         idx = group.index
         humidity = group["humidity_pct"].values
+        new_cols = {}
 
         for thresh in thresholds:
             col_name = f"hours_humidity_above_{thresh}_24h"
@@ -99,7 +124,7 @@ def compute_humidity_counters(df: pd.DataFrame) -> pd.DataFrame:
             # Ventana de 24h (12 lecturas si cada 2h)
             window_size = min(12, len(above))
             counts = pd.Series(above).rolling(window_size, min_periods=1).sum()
-            df.loc[idx, col_name] = counts.values * 2  # * 2h per reading
+            new_cols[col_name] = counts.values * 2  # * 2h per reading
 
         # Consecutive hours of humidity increase
         col_name = "consecutive_hours_humidity_increase_24h"
@@ -111,7 +136,15 @@ def compute_humidity_counters(df: pd.DataFrame) -> pd.DataFrame:
             .rolling(12, min_periods=1)
             .apply(_max_consecutive_ones, raw=True)
         )
-        df.loc[idx, col_name] = consec.values * 2
+        new_cols[col_name] = consec.values * 2
+
+        silo_counters = pd.DataFrame(new_cols, index=idx)
+        silo_counters["silo_id"] = silo_id
+        silo_counters["timestamp"] = group["timestamp"]
+        all_counters.append(silo_counters)
+
+    counters_df = pd.concat(all_counters)
+    df = df.merge(counters_df, on=["silo_id", "timestamp"], how="left")
 
     return df
 
@@ -179,7 +212,7 @@ def compute_static_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # days_since_fill
     if "fill_date" in df.columns:
-        fill_dates = pd.to_datetime(df["fill_date"], errors="coerce", utc=True)
+        fill_dates = pd.to_datetime(df["fill_date"], errors="coerce", utc=True, format="ISO8601")
         if df["timestamp"].dt.tz is None:
             df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
         df["days_since_fill"] = (
@@ -190,21 +223,33 @@ def compute_static_features(df: pd.DataFrame) -> pd.DataFrame:
         df["days_since_fill"] = 0
 
     # RSSI y SNR medias 24h
+    all_static = []
     for silo_id, group in df.groupby("silo_id"):
         idx = group.index
+        new_cols = {}
         if "rssi" in group.columns:
-            df.loc[idx, "rssi_mean_24h"] = (
+            new_cols["rssi_mean_24h"] = (
                 group["rssi"].rolling(12, min_periods=1).mean().values
             )
         if "snr" in group.columns:
-            df.loc[idx, "snr_mean_24h"] = (
+            new_cols["snr_mean_24h"] = (
                 group["snr"].rolling(12, min_periods=1).mean().values
             )
         if "imputed" in group.columns:
             imp_series = group["imputed"].astype(float)
-            df.loc[idx, "pct_imputed_72h"] = (
+            new_cols["pct_imputed_72h"] = (
                 imp_series.rolling(36, min_periods=1).mean().values
             )
+        
+        if new_cols:
+            silo_static = pd.DataFrame(new_cols, index=idx)
+            silo_static["silo_id"] = silo_id
+            silo_static["timestamp"] = group["timestamp"]
+            all_static.append(silo_static)
+
+    if all_static:
+        static_df = pd.concat(all_static)
+        df = df.merge(static_df, on=["silo_id", "timestamp"], how="left")
 
     return df
 
@@ -212,6 +257,9 @@ def compute_static_features(df: pd.DataFrame) -> pd.DataFrame:
 def run_feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
     """Pipeline completo de feature engineering."""
     logger.info("Inicio feature engineering...")
+
+    # Activar opción para evitar FutureWarning en fillna
+    pd.set_option('future.no_silent_downcasting', True)
 
     df = compute_rolling_features(df)
     logger.info("Rolling features calculadas")
@@ -248,7 +296,7 @@ def run_feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
             ]
         )
     ]
-    df[feature_cols] = df[feature_cols].fillna(0)
+    df[feature_cols] = df[feature_cols].fillna(0).infer_objects(copy=False)
 
     logger.info(f"Feature engineering completo: {len(feature_cols)} features generadas")
     return df

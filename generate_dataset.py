@@ -172,7 +172,7 @@ def generate_silo_readings(
         # Algunos picos breves → tolerable
         for _ in range(rng.integers(1, 4)):
             s = rng.integers(0, n_readings - 12)
-            labels[s : s + rng.integers(3, 12)] = "tolerable"
+            labels[s: s + rng.integers(3, 12)] = "tolerable"
 
     # Clampear valores a rangos físicos
     temperature = np.clip(temperature, -40, 80)
@@ -284,7 +284,7 @@ def main():
     config = load_config(args.config)
     output_path = args.output or config["paths"]["raw_dataset"]
 
-    print(f"[SMISIA] Generando dataset sintético...")
+    print("[SMISIA] Generando dataset sintético...")
     dataset = generate_dataset(config)
 
     # Crear directorio si no existe
@@ -296,12 +296,12 @@ def main():
     print(f"[SMISIA] Total registros: {len(dataset):,}")
     print(f"[SMISIA] Silos: {dataset['silo_id'].nunique()}")
     print(f"[SMISIA] Rango temporal: {dataset['timestamp'].min()} — {dataset['timestamp'].max()}")
-    print(f"[SMISIA] Distribución de labels:")
+    print("[SMISIA] Distribución de labels:")
     label_counts = dataset["label"].value_counts()
     for label, count in label_counts.items():
         pct = 100 * count / len(dataset)
         print(f"         {label}: {count:,} ({pct:.1f}%)")
-    print(f"[SMISIA] Missing values (NaN):")
+    print("[SMISIA] Missing values (NaN):")
     for col in ["temperature_c", "humidity_pct", "co2_ppm", "nh3_ppm"]:
         n_missing = dataset[col].isna().sum()
         pct = 100 * n_missing / len(dataset)

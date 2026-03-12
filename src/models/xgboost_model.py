@@ -12,9 +12,7 @@ import xgboost as xgb
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import (
     classification_report,
-    confusion_matrix,
     f1_score,
-    roc_auc_score,
 )
 
 logger = logging.getLogger("smisia.xgboost")

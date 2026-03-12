@@ -136,7 +136,7 @@ def prepare_sequences(
         labels = group["label"].map(label_map).fillna(0).values
 
         for i in range(seq_length, len(group) - max(horizons_days) * readings_per_day):
-            seq = values[i - seq_length : i]
+            seq = values[i - seq_length: i]
             target = []
             for h_days in horizons_days:
                 future_idx = i + h_days * readings_per_day

@@ -4,7 +4,6 @@ SMISIA — Esquemas Pydantic para la API
 
 from pydantic import BaseModel, Field
 from typing import Optional
-from datetime import datetime
 
 
 class SensorReading(BaseModel):

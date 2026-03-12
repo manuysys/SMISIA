@@ -4,7 +4,8 @@ Middleware de API key.
 """
 
 import os
-from fastapi import Request, HTTPException
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 
@@ -23,9 +24,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
         api_key = request.headers.get("X-API-Key")
         if api_key != self.api_key:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=401,
-                detail="API key inválida o faltante. Use header X-API-Key.",
+                content={"detail": "API key inválida o faltante. Use header X-API-Key."},
             )
 
         return await call_next(request)

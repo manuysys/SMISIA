@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.config import load_config  # noqa: E402
 from src.models.xgboost_model import (  # noqa: E402
-    load_model, get_feature_columns, CLASS_NAMES, LABEL_MAP,
+    load_model, CLASS_NAMES, LABEL_MAP,
     predict_with_uncertainty,
 )
 from src.models.calibration import compute_psi  # noqa: E402
@@ -35,6 +35,7 @@ logger = logging.getLogger("smisia.eval")
 def evaluate_classification(df, model_data, config):
     """Evaluación completa del clasificador."""
     import xgboost as xgb
+    import joblib
 
     feature_cols = model_data["feature_columns"]
     X = df[feature_cols].values.astype(np.float32)
@@ -44,6 +45,29 @@ def evaluate_classification(df, model_data, config):
     dmatrix = xgb.DMatrix(X)
     y_proba = model_data["model"].predict(dmatrix)
     y_pred = y_proba.argmax(axis=1)
+
+    # Incertidumbre (si hay bootstrap models)
+    uncertainty_stats = {}
+    models_dir = config["paths"]["models_dir"]
+    boot_path = os.path.join(models_dir, "bootstrap_models.joblib")
+    if os.path.exists(boot_path):
+        logger.info("Calculando incertidumbre con modelos bootstrap...")
+        boot_models = joblib.load(boot_path)
+        uncert_res = predict_with_uncertainty(boot_models, X, feature_cols)
+        uncertainty_stats = {
+            "mean_std": float(uncert_res["uncertainty_std"].mean()),
+            "max_std": float(uncert_res["uncertainty_std"].max()),
+        }
+
+    # PSI (Estabilidad de features - simplificado como drift interno)
+    # Comparamos la primera mitad vs la segunda mitad del dataset de evaluación
+    mid = len(X) // 2
+    psi_scores = {}
+    if mid > 0:
+        for i, col in enumerate(feature_cols):
+            psi = compute_psi(X[:mid, i], X[mid:, i])
+            if psi > 0.1:  # Solo reportar si hay algo de inestabilidad
+                psi_scores[col] = round(psi, 4)
 
     # Classification report
     report = classification_report(
@@ -72,6 +96,8 @@ def evaluate_classification(df, model_data, config):
         "auc_scores": auc_scores,
         "macro_f1": report["macro avg"]["f1-score"],
         "recall_critico": report.get("critico", {}).get("recall", 0),
+        "uncertainty": uncertainty_stats,
+        "feature_psi": psi_scores,
     }
 
 
@@ -145,11 +171,20 @@ def main():
 
     eval_results = evaluate_classification(df, model_data, config)
     print("\n" + eval_results["report_str"])
-    print(f"\nConfusion Matrix:")
+    print("\nConfusion Matrix:")
     print(np.array(eval_results["confusion_matrix"]))
     print(f"\nAUC por clase: {json.dumps(eval_results['auc_scores'], indent=2)}")
     print(f"Macro F1: {eval_results['macro_f1']:.4f}")
     print(f"Recall 'critico': {eval_results['recall_critico']:.4f}")
+
+    if eval_results["uncertainty"]:
+        print(f"Incertidumbre (Bootstrap std): Media={eval_results['uncertainty']['mean_std']:.4f}, "
+              f"Max={eval_results['uncertainty']['max_std']:.4f}")
+
+    if eval_results["feature_psi"]:
+        print("\nEstabilidad de Features (PSI > 0.1):")
+        for col, psi in eval_results["feature_psi"].items():
+            print(f"  {col}: {psi}")
 
     # ---------------------------------------------------------------
     # Tests de robustez
@@ -159,10 +194,10 @@ def main():
     logger.info("=" * 60)
 
     robust = robustness_test(df, model_data)
-    print(f"\nDegradación con ruido (macro F1):")
+    print("\nDegradación con ruido (macro F1):")
     for level, f1 in robust["noise"].items():
         print(f"  Ruido {level}: F1 = {f1}")
-    print(f"\nDegradación con missing (macro F1):")
+    print("\nDegradación con missing (macro F1):")
     for level, f1 in robust["missing"].items():
         print(f"  Missing {level}: F1 = {f1}")
 
@@ -175,6 +210,10 @@ def main():
                 "recall_critico": eval_results["recall_critico"],
                 "auc_scores": eval_results["auc_scores"],
                 "confusion_matrix": eval_results["confusion_matrix"],
+                "uncertainty": eval_results["uncertainty"],
+            },
+            "stability": {
+                "feature_psi": eval_results["feature_psi"],
             },
             "robustness": robust,
         }, f, indent=2, ensure_ascii=False)

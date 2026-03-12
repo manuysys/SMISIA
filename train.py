@@ -15,14 +15,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from src.config import load_config  # noqa: E402
 from src.preprocessing.cleaner import run_preprocessing_pipeline  # noqa: E402
 from src.features.engineer import run_feature_engineering  # noqa: E402
-from src.labeling.heuristic import apply_heuristic_labels, encode_labels  # noqa: E402
+from src.labeling.heuristic import apply_heuristic_labels  # noqa: E402
 from src.models.xgboost_model import (  # noqa: E402
     train_xgboost, train_bootstrap_ensemble,
     save_model, get_feature_columns,
 )
 from src.models.lstm_model import train_lstm, save_lstm_model  # noqa: E402
 from src.models.anomaly import train_anomaly_detector, save_anomaly_model  # noqa: E402
-from src.models.calibration import save_calibration  # noqa: E402
 
 # Logging
 logging.basicConfig(
