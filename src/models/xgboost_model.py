@@ -31,7 +31,6 @@ def get_feature_columns(df: pd.DataFrame) -> list:
         "heuristic_label",
         "label_source",
         "fill_date",
-        "imputed",
         "needs_review",
         "model_confidence",
     }
@@ -122,7 +121,7 @@ def train_xgboost(
 
         fold_f1 = f1_score(y_val, y_pred, average="macro")
         fold_report = classification_report(
-            y_val, y_pred, target_names=CLASS_NAMES, output_dict=True
+            y_val, y_pred, labels=range(len(CLASS_NAMES)), target_names=CLASS_NAMES, output_dict=True
         )
 
         cv_results.append(
@@ -158,7 +157,7 @@ def train_xgboost(
     y_pred_proba_final = final_model.predict(dtrain_full)
     y_pred_final = y_pred_proba_final.argmax(axis=1)
     final_report = classification_report(
-        y, y_pred_final, target_names=CLASS_NAMES, output_dict=True
+        y, y_pred_final, labels=range(len(CLASS_NAMES)), target_names=CLASS_NAMES, output_dict=True
     )
 
     avg_f1 = np.mean([r["macro_f1"] for r in cv_results])
@@ -240,11 +239,16 @@ def predict_with_uncertainty(
     Devuelve probabilidades medias y desviación estándar.
     """
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
+    # Si es una sola muestra, asegurar que sea 2D
+    if X.ndim == 1:
+        X = X.reshape(1, -1)
+        
     dmatrix = xgb.DMatrix(X, feature_names=feature_cols)
     all_probs = []
 
     for model in models:
         probs = model.predict(dmatrix)
+        # XGBoost predict devuelve (n_samples, n_classes) si multi:softprob
         all_probs.append(probs)
 
     all_probs = np.array(all_probs)  # (n_models, n_samples, n_classes)
@@ -253,12 +257,15 @@ def predict_with_uncertainty(
 
     predicted_class = mean_probs.argmax(axis=1)
     confidence = mean_probs.max(axis=1)
+    
+    # Incertidumbre de la clase predicha
     uncertainty = std_probs[np.arange(len(predicted_class)), predicted_class]
 
     return {
         "predicted_class": predicted_class,
         "predicted_label": [REVERSE_MAP[c] for c in predicted_class],
         "probabilities": mean_probs,
+        "std_probabilities": std_probs, # Ahora devolvemos todo el array de std
         "confidence": confidence,
         "uncertainty_std": uncertainty,
         "raw_scores": {

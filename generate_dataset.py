@@ -61,12 +61,18 @@ def generate_silo_readings(
     temperature = base_temp + temp_seasonal + temp_diurnal + temp_noise
 
     # -- Humedad --
+    # Diurnal cycle (humedad sube cuando temp baja)
+    hum_diurnal = -1 * np.sin(
+        2 * np.pi * np.arange(n_readings) / readings_per_day
+    )
     humidity_noise = rng.normal(0, 0.3, n_readings)
-    humidity = base_humidity + humidity_noise
+    humidity = base_humidity + hum_diurnal + humidity_noise
 
     # -- CO2 --
+    # Correlacionado con temperatura y humedad (actividad biológica)
+    co2_trend = (temperature - base_temp) * 10 + (humidity - base_humidity) * 5
     co2_noise = rng.normal(0, 20, n_readings)
-    co2 = base_co2 + co2_noise
+    co2 = base_co2 + co2_trend + co2_noise
 
     # -- NH3 --
     nh3_noise = rng.normal(0, 0.5, n_readings)
@@ -82,7 +88,7 @@ def generate_silo_readings(
     snr = base_snr + rng.normal(0, 1, n_readings)
 
     # -----------------------------------------------------------------------
-    # Aplicar escenarios de deterioro
+    # Aplicar escenarios de deterioro y deriva
     # -----------------------------------------------------------------------
     labels = np.full(n_readings, "bien", dtype=object)
 
@@ -92,18 +98,30 @@ def generate_silo_readings(
         ramp = np.zeros(n_readings)
         ramp[onset:] = np.linspace(0, rng.uniform(8, 18), n_readings - onset)
         humidity += ramp
-        # CO2 sube correlacionado
-        co2[onset:] += ramp[onset:] * rng.uniform(40, 100)
+        # CO2 sube fuertemente correlacionado (fermentación probable)
+        co2[onset:] += ramp[onset:] * rng.uniform(50, 120)
         # Labels
         for i in range(onset, n_readings):
             h = humidity[i]
             c = co2[i]
-            if h > 25 and c > 2000:
+            if h > 25 and c > 2500:
                 labels[i] = "critico"
-            elif h > 18 or c > 1200:
+            elif h > 20 or c > 1500:
                 labels[i] = "problema"
-            elif h > 16 or c > 800:
+            elif h > 17 or c > 1000:
                 labels[i] = "tolerable"
+
+    elif scenario == "sensor_drift":
+        # Simula deriva del sensor de CO2 (falla técnica, no silo)
+        # Sube sin que suban T o H
+        onset = rng.integers(n_readings // 4, n_readings // 2)
+        drift = np.linspace(0, 5000, n_readings - onset)
+        co2[onset:] += drift
+        # En este caso, el label NO debería ser crítico si T/H están bien
+        # Pero el sistema de labels heurísticos podría confundirse (test de Robustez)
+        for i in range(onset, n_readings):
+            if co2[i] > 3000:
+                labels[i] = "tolerable" # Alarma técnica, no necesariamente crítica de grano
 
     elif scenario == "temperature_spike":
         # Pico de temperatura (simula fermentación)
@@ -227,12 +245,13 @@ def generate_dataset(config: dict = None) -> pd.DataFrame:
     # Distribuir escenarios para lograr la distribución de labels deseada
     # ~70% bien, 15% tolerable, 10% problema, 5% critico
     scenarios = (
-        ["normal"] * 25          # 50% silos normales → mayormente "bien"
-        + ["sensor_noise"] * 7   # 14% → algo de "tolerable"
+        ["normal"] * 24          # 48% silos normales → mayormente "bien"
+        + ["sensor_noise"] * 6   # 12% → algo de "tolerable"
         + ["gradual_humidity"] * 7   # 14% → tolerable/problema/critico
         + ["temperature_spike"] * 4  # 8% → tolerable/problema/critico
         + ["co2_rise"] * 4           # 8% → tolerable/problema
         + ["sudden_anomaly"] * 3     # 6% → mezcla
+        + ["sensor_drift"] * 2       # 4% → Alarma técnica de CO2
     )
     rng.shuffle(scenarios)
 

@@ -125,25 +125,39 @@ def _run_inference(df: pd.DataFrame, request: InferRequest) -> InferResponse:
     last_row = np.nan_to_num(last_row, nan=0.0, posinf=0.0, neginf=0.0)
 
     # XGBoost prediction
-    if _state["xgb_model"] is not None:
+    uncertainty = 0.0
+    if _state.get("bootstrap_models"):
+        from src.models.xgboost_model import predict_with_uncertainty
+        res = predict_with_uncertainty(_state["bootstrap_models"], last_row, feature_cols)
+        probs = res["probabilities"][0]
+        uncertainty = float(res["uncertainty_std"][0])
+        std_probs = res["std_probabilities"][0]
+    elif _state["xgb_model"] is not None:
         dmatrix = xgb.DMatrix(last_row)
         probs = _state["xgb_model"].predict(dmatrix)[0]
+        std_probs = np.zeros_like(probs)
     else:
         probs = np.array([0.25, 0.25, 0.25, 0.25])
+        std_probs = np.zeros_like(probs)
 
     predicted_class = int(probs.argmax())
     status = CLASS_NAMES[predicted_class]
     confidence = float(probs.max())
 
-    # Uncertainty (bootstrap ensemble)
-    uncertainty = 0.0
-    if _state.get("bootstrap_models"):
-        all_probs = []
-        for model in _state["bootstrap_models"]:
-            p = model.predict(dmatrix)[0]
-            all_probs.append(p)
-        all_probs = np.array(all_probs)
-        uncertainty = float(all_probs.std(axis=0)[predicted_class])
+    # Lógica de incertidumbre práctica (Roadmap):
+    # Si la probabilidad de crítico es alta Y la incertidumbre es alta,
+    # forzamos revisión o elevamos alerta.
+    # CRITICO_THRESHOLD = 0.6, STD_THRESHOLD = 0.12
+    prob_critico = float(probs[3]) # 'critico' es clase 3
+    std_critico = float(std_probs[3])
+    
+    needs_review = False
+    if std_critico > 0.12 and prob_critico > 0.4:
+        # Si hay mucha duda pero el riesgo es latente, elevamos prioridad
+        needs_review = True
+        if status != "critico" and prob_critico > 0.5:
+             status = "critico" # Upgrade por precaución dinámica
+             confidence = prob_critico
 
     # Explanations (top features by importance)
     explanations = []

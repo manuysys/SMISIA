@@ -208,7 +208,7 @@ def compute_static_features(df: pd.DataFrame) -> pd.DataFrame:
     - rssi_mean_24h, snr_mean_24h
     - pct_imputed_72h
     """
-    df = df.copy()
+    df = df.sort_values(["silo_id", "timestamp"]).copy()
 
     # days_since_fill
     if "fill_date" in df.columns:
@@ -254,6 +254,26 @@ def compute_static_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def compute_sensor_health(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula una métrica de salud del sensor (0-1):
+    - Basada en RSSI, SNR y Nivel de Batería.
+    """
+    df = df.copy()
+    
+    # Normalizar componentes (0..1)
+    # RSSI: -120 (0) a -60 (1)
+    rssi_norm = ((df["rssi"].clip(-120, -60) + 120) / 60).fillna(0.5)
+    # SNR: 0 (0) a 15 (1)
+    snr_norm = (df["snr"].clip(0, 15) / 15).fillna(0.5)
+    # Battery: 0..100 -> 0..1
+    batt_norm = (df["battery_pct"].clip(0, 100) / 100).fillna(0.5)
+    
+    # Salud = promedio ponderado
+    df["sensor_health"] = (rssi_norm * 0.3 + snr_norm * 0.3 + batt_norm * 0.4)
+    return df
+
+
 def run_feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
     """Pipeline completo de feature engineering."""
     logger.info("Inicio feature engineering...")
@@ -272,29 +292,33 @@ def run_feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
 
     df = compute_static_features(df)
     logger.info("Features estáticas calculadas")
+    
+    df = compute_sensor_health(df)
+    logger.info("Salud del sensor calculada")
 
     # Rellenar NaN restantes con 0 para features calculadas
+    feature_prefixes = [
+        "temperature_c_",
+        "humidity_pct_",
+        "co2_ppm_",
+        "nh3_ppm_",
+        "battery_pct_",
+        "hours_humidity",
+        "consecutive_hours",
+        "temp_and_humidity_up",
+        "co2_spike_recent",
+        "days_since_fill",
+        "rssi_mean",
+        "snr_mean",
+        "pct_imputed",
+        "sensor_health",
+        "imputed", # Lo incluimos como feature binaria
+    ]
+    
     feature_cols = [
         c
         for c in df.columns
-        if any(
-            c.startswith(p)
-            for p in [
-                "temperature_c_",
-                "humidity_pct_",
-                "co2_ppm_",
-                "nh3_ppm_",
-                "battery_pct_",
-                "hours_humidity",
-                "consecutive_hours",
-                "temp_and_humidity_up",
-                "co2_spike_recent",
-                "days_since_fill",
-                "rssi_mean",
-                "snr_mean",
-                "pct_imputed",
-            ]
-        )
+        if any(c.startswith(p) for p in feature_prefixes) or c == "imputed"
     ]
     df[feature_cols] = df[feature_cols].fillna(0).infer_objects(copy=False)
 
