@@ -100,15 +100,19 @@ def generate_silo_readings(
         humidity += ramp
         # CO2 sube fuertemente correlacionado (fermentación probable)
         co2[onset:] += ramp[onset:] * rng.uniform(50, 120)
-        # Labels
+        # Labels más realistas y progresivos (Lead Time)
         for i in range(onset, n_readings):
             h = humidity[i]
             c = co2[i]
-            if h > 25 and c > 2500:
+            # Agregar ruido a la percepción del label para evitar AUC=1 perfecto
+            h_noisy = h + rng.normal(0, 1.5)
+            c_noisy = c + rng.normal(0, 200)
+            
+            if h_noisy > 28 and c_noisy > 2800:
                 labels[i] = "critico"
-            elif h > 20 or c > 1500:
+            elif h_noisy > 22 or c_noisy > 1800:
                 labels[i] = "problema"
-            elif h > 17 or c > 1000:
+            elif h_noisy > 18 or c_noisy > 1200:
                 labels[i] = "tolerable"
 
     elif scenario == "sensor_drift":
@@ -132,11 +136,11 @@ def generate_silo_readings(
         temperature[spike_start:spike_end] += spike_mag
         co2[spike_start:spike_end] += spike_mag * rng.uniform(30, 80)
         for i in range(spike_start, spike_end):
-            t = temperature[i]
-            c = co2[i]
-            if t > 45 and c > 1500:
+            t = temperature[i] + rng.normal(0, 2.0)
+            c = co2[i] + rng.normal(0, 150)
+            if t > 48 and c > 1800:
                 labels[i] = "critico"
-            elif t > 38 or c > 1200:
+            elif t > 40 or c > 1400:
                 labels[i] = "problema"
             else:
                 labels[i] = "tolerable"
@@ -149,13 +153,13 @@ def generate_silo_readings(
         co2 += ramp
         humidity[onset:] += ramp[onset:] * 0.003  # leve correlación
         for i in range(onset, n_readings):
-            c = co2[i]
-            h = humidity[i]
-            if c > 2000 and h > 25:
+            c = co2[i] + rng.normal(0, 100)
+            h = humidity[i] + rng.normal(0, 1.0)
+            if c > 2200 and h > 26:
                 labels[i] = "critico"
-            elif c > 1200:
+            elif c > 1400:
                 labels[i] = "problema"
-            elif c > 800:
+            elif c > 900:
                 labels[i] = "tolerable"
 
     elif scenario == "sudden_anomaly":

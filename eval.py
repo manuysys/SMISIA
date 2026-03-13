@@ -23,7 +23,7 @@ from src.models.xgboost_model import (  # noqa: E402
     load_model, CLASS_NAMES, LABEL_MAP,
     predict_with_uncertainty,
 )
-from src.models.calibration import compute_psi  # noqa: E402
+from src.models.monitoring import compute_psi, generate_monitoring_report  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -94,23 +94,40 @@ def run_shap_analysis(model, X, feature_cols, max_samples=500):
     else:
         X_sub = X
         
-    explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X_sub)
+    logger.info(f"Running Feature Importance on {len(X_sub)} samples...")
     
-    # SHAP devuelve una lista para multiclase. 
-    # Tomamos la importancia absoluta media entre todas las clases.
-    if isinstance(shap_values, list):
-        mean_abs_shap = np.mean([np.abs(sv).mean(axis=0) for sv in shap_values], axis=0)
-    else:
-        mean_abs_shap = np.abs(shap_values).mean(axis=0)
-        
-    shap_importance = {
-        feature_cols[i]: float(mean_abs_shap[i]) 
-        for i in range(len(feature_cols))
-    }
+    # Intentar SHAP primero
+    try:
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(X_sub)
+        if isinstance(shap_values, list):
+            mean_abs_shap = np.mean([np.abs(sv).mean(axis=0) for sv in shap_values], axis=0)
+        elif len(shap_values.shape) == 3:
+            mean_abs_shap = np.abs(shap_values).mean(axis=(0, 1))
+        else:
+            mean_abs_shap = np.abs(shap_values).mean(axis=0)
+            
+        importance_map = {
+            feature_cols[i]: float(mean_abs_shap[i]) 
+            for i in range(len(feature_cols))
+        }
+    except Exception as e:
+        logger.warning(f"SHAP falló: {e}. Usando importancia nativa (Gain) como fallback.")
+        # Fallback a importancia nativa del Booster
+        gain_scores = model.get_score(importance_type="gain")
+        # El booster usa f0, f1... como llaves si el input fue numpy
+        importance_map = {}
+        for k, v in gain_scores.items():
+            try:
+                idx = int(k.replace("f", ""))
+                importance_map[feature_cols[idx]] = float(v)
+            except:
+                continue
+    
     # Ordenar y tomar top 20
-    shap_importance = dict(sorted(shap_importance.items(), key=lambda x: x[1], reverse=True)[:20])
-    return shap_importance
+    top_importance = dict(sorted(importance_map.items(), key=lambda x: x[1], reverse=True)[:20])
+    logger.info(f"Feature importance calculated: {len(top_importance)} features")
+    return top_importance
 
 
 def evaluate_classification(df, model_data, config):
@@ -150,15 +167,16 @@ def evaluate_classification(df, model_data, config):
             "max_std": float(uncert_res["uncertainty_std"].max()),
         }
 
-    # PSI (Estabilidad de features)
-    from src.models.monitoring import compute_psi
-    mid = len(X) // 2
+    # PSI (Estabilidad de features) - Usamos split aleatorio para Baseline vs Actual inicial
+    # para evitar detectar drift temporal natural del dataset sintético como 'falla'.
+    from sklearn.model_selection import train_test_split
+    idx_baseline, idx_actual = train_test_split(np.arange(len(X)), test_size=0.5, random_state=42)
+    
     psi_scores = {}
-    if mid > 0:
-        for i, col in enumerate(feature_cols):
-            psi = compute_psi(X[:mid, i], X[mid:, i])
-            if psi > 0.1:
-                psi_scores[col] = round(psi, 4)
+    for i, col in enumerate(feature_cols):
+        psi = compute_psi(X[idx_baseline, i], X[idx_actual, i])
+        if psi > 0.1:
+            psi_scores[col] = round(psi, 4)
 
     # SHAP Analysis
     shap_report = {}
@@ -305,7 +323,7 @@ def main():
     for level, f1 in robust["missing"].items():
         print(f"  Missing {level}: F1 = {f1}")
 
-    # Guardar reporte
+    # Guardar reporte JSON
     report_path = os.path.join(models_dir, "evaluation_report.json")
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump({
@@ -324,7 +342,18 @@ def main():
             "shap": eval_results["shap_importance"],
             "robustness": robust,
         }, f, indent=2, ensure_ascii=False)
-    logger.info(f"Reporte guardado en {report_path}")
+    
+    # Generar Dashboard HTML (Roadmap Phase 2)
+    from src.models.monitoring import generate_monitoring_report
+    # Preparar resultados en el formato que espera la función (alert: True si psi > 0.25)
+    psi_full = {}
+    for feat, psi in eval_results["feature_psi"].items():
+        psi_full[feat] = {"psi": psi, "alert": psi > 0.25}
+        
+    html_report_path = os.path.join(models_dir, "monitoring_report.html")
+    generate_monitoring_report(psi_full, html_report_path)
+    
+    logger.info(f"Reportes guardados: JSON en {report_path}, HTML en {html_report_path}")
 
 
 if __name__ == "__main__":

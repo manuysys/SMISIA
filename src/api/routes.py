@@ -115,6 +115,19 @@ def _run_inference(df: pd.DataFrame, request: InferRequest) -> InferResponse:
     if not feature_cols:
         raise HTTPException(status_code=500, detail="Modelo no cargado correctamente")
 
+    # Validador de Calidad (Roadmap Phase 2)
+    from src.features.validator import validate_inference_data, clean_data_for_inference
+    validation = validate_inference_data(df, feature_cols)
+    if not validation["valid"]:
+        logger.error(f"Datos de inferencia inválidos: {validation['errors']}")
+        raise HTTPException(status_code=400, detail=f"Calidad de datos insuficiente: {validation['errors']}")
+    
+    if validation["warnings"]:
+        logger.warning(f"Warnings de calidad de datos: {validation['warnings']}")
+    
+    # Limpieza extrema
+    df = clean_data_for_inference(df, feature_cols)
+
     # Asegurar que todas las columnas existen
     for col in feature_cols:
         if col not in df.columns:

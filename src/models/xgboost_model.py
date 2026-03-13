@@ -14,6 +14,8 @@ from sklearn.metrics import (
     classification_report,
     f1_score,
 )
+import datetime
+import json
 
 logger = logging.getLogger("smisia.xgboost")
 
@@ -274,26 +276,131 @@ def predict_with_uncertainty(
     }
 
 
-def save_model(result: dict, models_dir: str = "models"):
-    """Guarda modelo, features e importances."""
+class ModelRegistry:
+    """Gestiona el versionado y metadatos de los modelos guardados."""
+    def __init__(self, models_dir: str = "models"):
+        self.models_dir = models_dir
+        os.makedirs(self.models_dir, exist_ok=True)
+        self.registry_file = os.path.join(self.models_dir, "registry.json")
+        self._load_registry()
+
+    def _load_registry(self):
+        if os.path.exists(self.registry_file):
+            try:
+                with open(self.registry_file, "r") as f:
+                    self.registry = json.load(f)
+            except Exception:
+                self.registry = {"models": [], "latest_v": 0}
+        else:
+            self.registry = {"models": [], "latest_v": 0}
+
+    def _save_registry(self):
+        with open(self.registry_file, "w") as f:
+            json.dump(self.registry, f, indent=2)
+
+    def register_model(self, model_files: dict, metadata: dict):
+        self.registry["latest_v"] += 1
+        v_num = self.registry["latest_v"]
+        version = f"v{v_num}"
+        entry = {
+            "version": version,
+            "timestamp": datetime.datetime.now().isoformat(),
+            "files": model_files,
+            "metadata": metadata
+        }
+        self.registry["models"].append(entry)
+        self._save_registry()
+        return version
+
+    def get_latest_model(self):
+        if not self.registry["models"]:
+            return None
+        return self.registry["models"][-1]
+
+
+def save_model(result: dict, models_dir: str = "models", versioned: bool = True, bootstrap_models: list = None):
+    """Guarda modelo, features e importances con soporte opcional de versionado."""
     os.makedirs(models_dir, exist_ok=True)
+    
+    registry = ModelRegistry(models_dir)
+    v_tag = ""
+    if versioned:
+        v_num = registry.registry["latest_v"] + 1
+        v_tag = f"_v{v_num}"
+
+    model_path = os.path.join(models_dir, f"xgboost_model{v_tag}.joblib")
+    features_path = os.path.join(models_dir, f"feature_columns{v_tag}.joblib")
+    importance_path = os.path.join(models_dir, f"feature_importance{v_tag}.joblib")
+    
+    joblib.dump(result["model"], model_path)
+    joblib.dump(result["feature_columns"], features_path)
+    joblib.dump(result["feature_importance"], importance_path)
+    
+    # También guardar como 'latest' sin tag para compatibilidad
     joblib.dump(result["model"], os.path.join(models_dir, "xgboost_model.joblib"))
-    joblib.dump(
-        result["feature_columns"],
-        os.path.join(models_dir, "feature_columns.joblib"),
-    )
-    joblib.dump(
-        result["feature_importance"],
-        os.path.join(models_dir, "feature_importance.joblib"),
-    )
-    logger.info(f"Modelo XGBoost guardado en {models_dir}/")
+    joblib.dump(result["feature_columns"], os.path.join(models_dir, "feature_columns.joblib"))
+
+    files = {
+        "model": os.path.basename(model_path),
+        "features": os.path.basename(features_path),
+        "importance": os.path.basename(importance_path)
+    }
+
+    if bootstrap_models:
+        boot_path = os.path.join(models_dir, f"bootstrap_models{v_tag}.joblib")
+        joblib.dump(bootstrap_models, boot_path)
+        joblib.dump(bootstrap_models, os.path.join(models_dir, "bootstrap_models.joblib"))
+        files["bootstrap"] = os.path.basename(boot_path)
+
+    if versioned:
+        metadata = {
+            "macro_f1": result.get("final_report", {}).get("macro avg", {}).get("f1-score"),
+            "recall_critico": result.get("final_report", {}).get("critico", {}).get("recall"),
+            "num_features": len(result["feature_columns"])
+        }
+        version = registry.register_model(files, metadata)
+        logger.info(f"Modelo XGBoost registrado como {version} en {models_dir}/")
+    else:
+        logger.info(f"Modelo XGBoost guardado en {models_dir}/")
 
 
-def load_model(models_dir: str = "models") -> dict:
-    """Carga modelo entrenado."""
+def load_model(models_dir: str = "models", version: str = None) -> dict:
+    """Carga modelo entrenado. Si no se especifica versión, carga el último registrado."""
+    registry = ModelRegistry(models_dir)
+    
+    if version:
+        entry = next((m for m in registry.registry["models"] if m["version"] == version), None)
+        if not entry:
+            logger.warning(f"Versión {version} no encontrada en registro. Usando archivos por defecto.")
+            return _load_default(models_dir)
+    else:
+        entry = registry.get_latest_model()
+    
+    if entry:
+        try:
+            model = joblib.load(os.path.join(models_dir, entry["files"]["model"]))
+            feature_cols = joblib.load(os.path.join(models_dir, entry["files"]["features"]))
+            importance = joblib.load(os.path.join(models_dir, entry["files"]["importance"]))
+            logger.info(f"Cargado modelo versión {entry['version']} registrado el {entry['timestamp']}")
+            return {
+                "model": model,
+                "feature_columns": feature_cols,
+                "feature_importance": importance,
+                "metadata": entry["metadata"]
+            }
+        except Exception as e:
+            logger.error(f"Error cargando versión {entry['version']}: {e}. Intentando default.")
+    
+    return _load_default(models_dir)
+
+
+def _load_default(models_dir: str) -> dict:
     model = joblib.load(os.path.join(models_dir, "xgboost_model.joblib"))
     feature_cols = joblib.load(os.path.join(models_dir, "feature_columns.joblib"))
-    importance = joblib.load(os.path.join(models_dir, "feature_importance.joblib"))
+    importance = {}
+    imp_path = os.path.join(models_dir, "feature_importance.joblib")
+    if os.path.exists(imp_path):
+        importance = joblib.load(imp_path)
     return {
         "model": model,
         "feature_columns": feature_cols,

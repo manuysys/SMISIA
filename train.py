@@ -22,6 +22,7 @@ from src.models.xgboost_model import (  # noqa: E402
 )
 from src.models.lstm_model import train_lstm, save_lstm_model  # noqa: E402
 from src.models.anomaly import train_anomaly_detector, save_anomaly_model  # noqa: E402
+from src.models.tuner import run_hyperparameter_tuning  # noqa: E402
 
 # Logging
 logging.basicConfig(
@@ -36,6 +37,7 @@ def main():
     parser.add_argument("--config", type=str, default=None, help="Ruta a config.yml")
     parser.add_argument("--skip-lstm", action="store_true", help="Saltar LSTM")
     parser.add_argument("--skip-anomaly", action="store_true", help="Saltar anomaly detection")
+    parser.add_argument("--tune", action="store_true", help="Ejecutar Optuna hyperparameter tuning")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -79,21 +81,29 @@ def main():
     logger.info(f"Dataset procesado guardado en {processed_path}")
 
     # ---------------------------------------------------------------
+    # 4.5 Tuning (Opcional)
+    # ---------------------------------------------------------------
+    if args.tune:
+        logger.info("Iniciando Hyperparameter Tuning...")
+        best_params = run_hyperparameter_tuning(df, config, n_trials=15)
+        logger.info(f"Mejores parámetros encontrados: {best_params}")
+        # Actualizar config en memoria para el entrenamiento
+        config["xgboost"].update(best_params)
+
+    # ---------------------------------------------------------------
     # 5. Fase A: XGBoost
     # ---------------------------------------------------------------
     logger.info("=" * 60)
     logger.info("FASE A: Entrenamiento XGBoost")
     logger.info("=" * 60)
 
+    # FASE A: Entrenamiento y Guardado (Ensemble + Bootstrap)
     xgb_result = train_xgboost(df, config, label_col="label")
-    save_model(xgb_result, models_dir)
-
-    # Ensemble para incertidumbre
+    
     logger.info("Entrenando ensemble bootstrap...")
     bootstrap_models = train_bootstrap_ensemble(df, config, label_col="label")
-    import joblib
-    joblib.dump(bootstrap_models, os.path.join(models_dir, "bootstrap_models.joblib"))
-    logger.info(f"Ensemble de {len(bootstrap_models)} modelos guardado")
+    
+    save_model(xgb_result, models_dir, versioned=True, bootstrap_models=bootstrap_models)
 
     # Feature columns para otros modelos
     feature_cols = get_feature_columns(df)
