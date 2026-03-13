@@ -45,6 +45,7 @@ _state = {
     "inference_count": 0,
     "total_latency": 0.0,
     "last_results": {},  # cache de últimos resultados por silo_id
+    "_chat_sessions": {}, # memoria por usuario (simulamos con un ID único si hubiera, por ahora global)
 }
 
 # Recomendaciones por estado
@@ -355,20 +356,38 @@ async def metrics():
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """Endpoint del chatbot."""
-    cached = None
-    silo_id = request.silo_id
-
-    # Intentar extraer silo_id del mensaje si no se proporcionó
+    """Endpoint del chatbot con memoria y semántica."""
+    from src.chatbot.interpreter import extract_silo_id
+    
+    # 1. Recuperar contexto (Memoria de Fase 3)
+    last_silo = _state["_chat_sessions"].get("last_silo")
+    
+    message = request.message
+    silo_id = request.silo_id or extract_silo_id(message)
+    
+    # Si no hay silo_id en el mensaje ni en el request, intentamos el de memoria
     if not silo_id:
-        import re
-
-        match = re.search(r"silo(?:bolsa)?\s+(\w+)", request.message, re.IGNORECASE)
-        if match:
-            silo_id = match.group(1)
-
+        silo_id = last_silo
+        
+    # 2. Actualizar memoria si encontramos un silo
+    if silo_id:
+        _state["_chat_sessions"]["last_silo"] = silo_id
+        
+    cached = None
     if silo_id:
         cached = _state["last_results"].get(silo_id)
 
-    response = format_chat_response(request.message, silo_id, cached)
+    # 3. Formatear respuesta (bot.py usa el interpreter internamente)
+    # Pasamos all_silos para permitir consultas globales (Fase 4)
+    response = format_chat_response(
+        message, 
+        silo_id, 
+        cached_data=cached,
+        all_silos=_state["last_results"]
+    )
+    
+    # Si logramos identificar el silo en la respuesta, lo devolvemos
+    if silo_id:
+        response.silo_id = silo_id
+        
     return response
