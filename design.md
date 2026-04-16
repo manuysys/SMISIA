@@ -1,125 +1,199 @@
-# SMISIA — Mobile App Interface Design
+# SMISIA Web Dashboard — Design Document
 
-## Brand Identity
+## Overview
 
-**App Name:** SMISIA  
-**Full Name:** Sistema de Monitoreo Inteligente de Silobolsas con IA  
-**Tagline:** Monitoreo inteligente para tu cosecha  
-**Target Users:** Agricultural producers (non-technical), agronomists, field managers
+SMISIA web is a **responsive dashboard** for agricultural IoT monitoring of silobags. Built with **Next.js + React + Tailwind CSS**, it provides real-time insights into grain storage conditions with AI-powered risk predictions.
 
-### Color Palette
-
-| Token | Light | Dark | Usage |
-|-------|-------|------|-------|
-| `primary` | `#1B6CA8` | `#3B9EE0` | Brand accent, CTAs, active states |
-| `background` | `#F4F7FB` | `#0F1923` | Screen backgrounds |
-| `surface` | `#FFFFFF` | `#1A2535` | Cards, panels |
-| `foreground` | `#0D1B2A` | `#E8F0F9` | Primary text |
-| `muted` | `#6B7E93` | `#8A9DB5` | Secondary text, labels |
-| `border` | `#D6E3F0` | `#2A3D54` | Dividers, card borders |
-| `success` | `#16A34A` | `#4ADE80` | Safe / green status |
-| `warning` | `#D97706` | `#FBBF24` | Medium risk / yellow |
-| `error` | `#DC2626` | `#F87171` | High risk / red |
-| `info` | `#0EA5E9` | `#38BDF8` | Informational badges |
+**Target Users:** Farm managers, agronomists, storage facility operators  
+**Primary Devices:** Desktop (1920×1080), Tablet (768×1024), Mobile (375×667)
 
 ---
 
 ## Screen List
 
-1. **Dashboard** — Main overview of all silobags
-2. **Silobag Detail** — Deep-dive per silobag: charts, AI prediction, recommendations
-3. **Alerts** — Prioritized alert list with filters
-4. **Map** — Geographic view of silobag locations and status
-5. **Settings** — Thresholds, sampling interval, notifications
+### 1. **Dashboard (Home)**
+- **Purpose:** Real-time overview of all silobags and system health
+- **Content:**
+  - Header: Logo, user profile, notifications bell
+  - KPI Cards: Total silobags, active alerts, avg temperature, critical readings
+  - Silobag Grid: Cards showing each silobag with status badge, current readings, last update
+  - Alert Summary: Recent alerts with priority colors
+  - Quick Stats: Risk distribution pie chart, temperature trend sparkline
+- **Functionality:**
+  - Click silobag card → navigate to detail page
+  - Click alert → navigate to alerts page
+  - Pull-to-refresh (mobile) / Refresh button (desktop)
+  - Filter by risk level (All/Safe/Low/Medium/High)
+
+### 2. **Silobag Detail Page**
+- **Purpose:** In-depth analysis of a single silobag
+- **Content:**
+  - Header: Silobag name, location, grain type, risk badge
+  - Current Readings: Large cards for temp, humidity, CO2 with trend arrows
+  - AI Prediction Card: Risk level, confidence %, explanation, recommendations
+  - Charts Section:
+    - Line chart: Temperature (24h/7d/30d toggle)
+    - Line chart: Humidity (24h/7d/30d toggle)
+    - Line chart: CO2 (24h/7d/30d toggle)
+  - Alert History: Table of recent alerts with timestamps and actions
+  - Metadata: Last reading time, sensor ID, battery level
+- **Functionality:**
+  - Time range toggle (24h/7d/30d)
+  - Export chart as image
+  - Acknowledge/dismiss alerts
+  - Back button to dashboard
+
+### 3. **Alerts Page**
+- **Purpose:** Centralized alert management
+- **Content:**
+  - Filter tabs: All / High / Medium / Low / Acknowledged
+  - Alert List: Cards with silobag name, alert type, time, action buttons
+  - Alert Details: Click to expand and see full context
+  - Bulk Actions: Select multiple, mark as read, acknowledge all
+- **Functionality:**
+  - Filter by priority
+  - Sort by time/severity
+  - Acknowledge individual alerts
+  - Navigate to silobag detail from alert
+
+### 4. **Map Page**
+- **Purpose:** Geographic view of silobag locations
+- **Content:**
+  - Interactive map (Leaflet/Mapbox)
+  - Markers colored by risk level (Green/Yellow/Orange/Red)
+  - Marker popup: Silobag name, current readings, risk level
+  - Legend: Risk color codes with counts
+  - Sidebar: Silobag list with status
+- **Functionality:**
+  - Click marker → silobag detail
+  - Click list item → center map on location
+  - Zoom/pan controls
+  - Filter by risk level
+
+### 5. **Settings Page**
+- **Purpose:** System configuration
+- **Content:**
+  - Alert Thresholds: Max temp, max humidity, max CO2 (editable inputs)
+  - Sampling Interval: Dropdown (1h/2h/4h)
+  - Notifications: Toggle push notifications, high-risk-only filter
+  - User Preferences: Dark mode toggle, language, timezone
+  - IoT Simulation: Generate test data button, reset data button
+  - About: System version, API status, database info
+- **Functionality:**
+  - Save threshold changes
+  - Generate mock sensor data
+  - Reset all data
+  - Toggle dark/light mode
 
 ---
 
 ## Primary Content & Functionality
 
-### 1. Dashboard (`/`)
-- Header: App logo + "SMISIA" title + notification bell badge
-- Summary KPI row: Total silobags | Active alerts | Average temperature
-- Silobag list (FlatList): each card shows:
-  - Name + location
-  - Status badge (🟢 Seguro / 🟡 Precaución / 🔴 Peligro)
-  - Last reading: temp, humidity, CO2
-  - Last update timestamp
-- Pull-to-refresh to simulate new sensor data
-- Tap card → navigate to Silobag Detail
+### Data Models
+- **Silobag:** id, name, location, grain_type, latitude, longitude, is_active, risk_level, last_reading, prediction
+- **SensorReading:** id, silobag_id, timestamp, temperature, humidity, co2
+- **Alert:** id, silobag_id, risk_level, triggered_rules, created_at, acknowledged_at
+- **AppSettings:** max_temperature, max_humidity, max_co2, sampling_interval_hours, push_notifications_enabled
 
-### 2. Silobag Detail (`/silobag/[id]`)
-- Header: back arrow + silobag name + status badge
-- Current readings row: Temp | Humidity | CO2 (large KPI cards)
-- AI Risk Prediction card: risk level + confidence % + explanation text
-- Recommendations list: auto-generated based on readings
-- Time-series chart: line chart with 24h/7d/30d toggle (temperature, humidity, CO2)
-- History table: last 10 readings
+### Key User Flows
 
-### 3. Alerts (`/alerts`)
-- Filter tabs: Todos | Alto | Medio | Bajo
-- Alert list (FlatList): each item shows:
-  - Priority badge (colored)
-  - Silobag name
-  - Alert message (e.g., "Posible deterioro por alta humedad")
-  - Timestamp
-- Empty state when no alerts
+**Flow 1: Monitor Silobag Status**
+1. User opens Dashboard
+2. Sees KPI cards and silobag grid
+3. Identifies silobag with HIGH risk (red badge)
+4. Clicks card → navigates to Detail page
+5. Sees current readings, AI prediction, and recommendations
+6. Views 7-day temperature chart to understand trend
+7. Acknowledges alert
 
-### 4. Map (`/map`)
-- Interactive map (expo-maps or react-native-maps)
-- Markers per silobag: color-coded by status
-- Tap marker → bottom sheet with silobag summary
-- Legend overlay
+**Flow 2: Respond to Alert**
+1. User receives push notification: "Silobag B2 — HIGH RISK"
+2. Clicks notification → navigates to Alerts page
+3. Filters by "High" priority
+4. Sees alert details: "Temperature critical (32°C > 28°C)"
+5. Clicks "View Silobag" → Detail page
+6. Reads AI recommendation: "Increase ventilation"
+7. Marks alert as acknowledged
 
-### 5. Settings (`/settings`)
-- Section: Umbrales de alerta
-  - Temperatura máxima (°C)
-  - Humedad máxima (%)
-  - CO2 máximo (ppm)
-- Section: Muestreo
-  - Intervalo de datos (1h / 2h / 4h)
-- Section: Notificaciones
-  - Toggle alertas push
-  - Toggle alertas de alto riesgo
-- Section: Simulación
-  - Botón "Generar datos de prueba"
-  - Botón "Resetear datos"
+**Flow 3: Configure System**
+1. User goes to Settings
+2. Adjusts max temperature threshold from 28°C to 26°C
+3. Clicks "Save Thresholds"
+4. System re-analyzes all silobags with new rules
+5. New alerts generated if readings exceed new threshold
 
 ---
 
-## Key User Flows
+## Color Palette (Agricultural/Industrial Theme)
 
-### Flow 1: Check silobag status
-Home tab → Silobag card → Detail screen → View charts and AI prediction
+| Role | Color | Hex | Usage |
+|------|-------|-----|-------|
+| **Primary** | Teal | `#0d9488` | Buttons, links, accents |
+| **Success** | Green | `#16a34a` | Safe status, positive states |
+| **Warning** | Amber | `#d97706` | Low/medium risk |
+| **Error** | Red | `#dc2626` | High risk, critical alerts |
+| **Background** | Off-white | `#f9fafb` | Page backgrounds |
+| **Surface** | White | `#ffffff` | Cards, panels |
+| **Foreground** | Dark Gray | `#111827` | Primary text |
+| **Muted** | Gray | `#6b7280` | Secondary text |
+| **Border** | Light Gray | `#e5e7eb` | Dividers, borders |
 
-### Flow 2: Respond to alert
-Alerts tab → Tap alert → Navigate to silobag detail → Read recommendation
-
-### Flow 3: Locate silobag on map
-Map tab → Tap marker → View summary → Tap "Ver detalle" → Detail screen
-
-### Flow 4: Adjust alert thresholds
-Settings tab → Umbrales section → Edit value → Save
-
----
-
-## Navigation Structure
-
-Bottom Tab Bar (5 tabs):
-- 🏠 Dashboard (house.fill)
-- 🔔 Alertas (bell.fill)
-- 🗺️ Mapa (map.fill)
-- ⚙️ Ajustes (gearshape.fill)
-
-Stack navigator inside Dashboard tab for Silobag Detail screen.
+### Dark Mode
+- Background: `#0f172a`
+- Surface: `#1e293b`
+- Foreground: `#f1f5f9`
+- Muted: `#94a3b8`
 
 ---
 
-## Visual Style
+## Layout & Responsive Design
 
-- **Layout:** Cards with rounded corners (12px), subtle shadows, generous padding
-- **Typography:** System font, bold headers, regular body, small muted labels
-- **Icons:** SF Symbols (iOS) / Material Icons (Android)
-- **Charts:** Line charts with colored fills, grid lines, axis labels
-- **Status colors:** Always use semantic tokens (success/warning/error), never hardcoded hex
-- **Spacing:** 16px base unit, 8px half-unit for tight spaces
-- **Inspiration:** Industrial IoT dashboards + modern agricultural apps
+### Desktop (1920×1080)
+- Sidebar navigation (left, 240px)
+- Main content area (full width)
+- 3-column grid for silobag cards
+- Full-size charts (line charts span 100%)
+
+### Tablet (768×1024)
+- Hamburger menu (sidebar collapses)
+- 2-column grid for silobag cards
+- Stacked charts
+
+### Mobile (375×667)
+- Full-width hamburger menu
+- 1-column grid for silobag cards
+- Stacked sections
+- Touch-friendly buttons (48px min)
+
+---
+
+## Key Interactions
+
+1. **Real-time Updates:** WebSocket connection for live sensor data (optional, mock for MVP)
+2. **Animations:** Smooth transitions between pages, subtle hover effects on cards
+3. **Accessibility:** WCAG 2.1 AA compliance, keyboard navigation, screen reader support
+4. **Performance:** Server-side rendering for fast initial load, client-side hydration for interactivity
+
+---
+
+## Technology Stack
+
+- **Framework:** Next.js 16 (App Router)
+- **UI Library:** React 19
+- **Styling:** Tailwind CSS 4
+- **Charts:** Recharts (line charts)
+- **Maps:** Leaflet + React-Leaflet (or Mapbox GL)
+- **State Management:** React Context + hooks
+- **API Client:** Fetch API / Axios
+- **Testing:** Vitest + React Testing Library
+- **Deployment:** Vercel / Self-hosted
+
+---
+
+## Success Metrics
+
+- Dashboard loads in <2s (desktop), <3s (mobile)
+- All user flows complete end-to-end without errors
+- Charts render smoothly with 60+ data points
+- Responsive design works on all target devices
+- Dark mode toggle works without page reload
