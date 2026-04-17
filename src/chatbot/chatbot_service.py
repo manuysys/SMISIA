@@ -11,10 +11,10 @@ import time
 from typing import Optional
 from dataclasses import dataclass, field
 
-from llm_client import BaseLLMClient, FallbackLLMClient, create_llm_client, LLMConfig
-from prompt_builder import PromptBuilder, build_system_context
-from memory import ConversationMemory
-from rule_based_engine import RuleBasedEngine, SiloState
+from .llm_client import BaseLLMClient, FallbackLLMClient, create_llm_client, LLMConfig
+from .prompt_builder import PromptBuilder, build_system_context
+from .memory import ConversationMemory
+from .rule_based_engine import RuleBasedEngine, SiloState
 
 logger = logging.getLogger(__name__)
 

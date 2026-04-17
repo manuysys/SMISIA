@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 """
 AGRILION — API Schemas (Pydantic)
 ===================================
@@ -145,7 +144,7 @@ class IngestResponse(BaseModel):
     anomalies: dict
     alerts: list
     metadata: dict
-=======
+
 """
 AGRILION — API Schemas (Pydantic)
 ===================================
@@ -313,4 +312,3 @@ class ChatResponse(BaseModel):
     latency_ms: float
     context_used: dict = {}
     error: Optional[str] = None
->>>>>>> bc8d2eb (Implementación del chatbot con OpenRouter y Ollama3 Local (por ahora))
