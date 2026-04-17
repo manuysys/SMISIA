@@ -31,6 +31,8 @@ from .schemas import (
     ModelStatusResponse,
     IngestRequest,
     IngestResponse,
+    ChatRequest,
+    ChatResponse,
 )
 
 import sys
@@ -44,6 +46,7 @@ from src.anomaly_detection import AnomalyDetector
 from src.risk_engine import RiskEngine
 from src.alerts import AlertSystem
 from src.services.ai_service import AIService, InMemoryRepository, SensorReading as AISensorReading
+from src.chatbot import ChatbotService, LLMConfig, FallbackClient
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +64,7 @@ _alert_system = AlertSystem()
 _anomaly_detector = AnomalyDetector()
 _ai_service: Optional[AIService] = None
 _repository = InMemoryRepository()
+_chatbot: Optional[ChatbotService] = None
 
 
 def initialize_model():
@@ -94,6 +98,15 @@ def initialize_model():
             anomaly_detector=_anomaly_detector,
         )
         logger.info("✅ AI Service inicializado para API")
+
+    # Inicializar Chatbot Service
+    global _chatbot
+    try:
+        _chatbot = ChatbotService(ai_service=_ai_service, risk_engine=_risk_engine)
+        logger.info("✅ Chatbot service inicializado")
+    except Exception as e:
+        logger.warning(f"⚠️ Chatbot init failed: {e}. Chat endpoint will use fallback.")
+        _chatbot = ChatbotService(llm_client=FallbackClient(LLMConfig()))
 
 
 def _readings_to_df(readings) -> pd.DataFrame:
@@ -375,3 +388,58 @@ async def ingest_sensor_reading(request: IngestRequest):
     except Exception as e:
         logger.error(f"Error en /ingest: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===========================================================================
+# CHATBOT ENDPOINTS
+# ===========================================================================
+
+@router.post("/chat", response_model=ChatResponse, tags=["Chatbot"])
+async def chat(request: ChatRequest):
+    """
+    Intelligent chatbot endpoint.
+
+    Answers questions about the silo state, alerts, sensor data,
+    and agricultural risk using a real LLM API with injected system context.
+
+    Set env var OPENROUTER_API_KEY (free at openrouter.ai) to enable.
+    """
+    if _chatbot is None:
+        raise HTTPException(status_code=503, detail="Chatbot not initialized")
+
+    result = _chatbot.chat(
+        message=request.message,
+        silo_id=request.silo_id,
+        session_id=request.session_id,
+    )
+    return ChatResponse(**result.to_dict())
+
+
+@router.post("/chat/summarize/{silo_id}", response_model=ChatResponse, tags=["Chatbot"])
+async def summarize_silo(silo_id: str):
+    """
+    Generate a natural-language status summary for a silo.
+    """
+    if _chatbot is None:
+        raise HTTPException(status_code=503, detail="Chatbot not initialized")
+    result = _chatbot.summarize_silo(silo_id)
+    return ChatResponse(**result.to_dict())
+
+
+@router.post("/chat/explain-alert", response_model=ChatResponse, tags=["Chatbot"])
+async def explain_alert(alert: dict, silo_id: str = "SILO_001"):
+    """
+    Get a natural-language explanation of a specific alert.
+    """
+    if _chatbot is None:
+        raise HTTPException(status_code=503, detail="Chatbot not initialized")
+    result = _chatbot.explain_alert(alert, silo_id=silo_id)
+    return ChatResponse(**result.to_dict())
+
+
+@router.delete("/chat/session/{session_id}", tags=["Chatbot"])
+async def clear_chat_session(session_id: str):
+    """Clear conversation memory for a session."""
+    if _chatbot:
+        _chatbot.clear_session(session_id)
+    return {"status": "cleared", "session_id": session_id}
