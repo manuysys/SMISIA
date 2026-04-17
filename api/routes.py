@@ -29,6 +29,8 @@ from .schemas import (
     RiskResult,
     HealthResponse,
     ModelStatusResponse,
+    IngestRequest,
+    IngestResponse,
 )
 
 import sys
@@ -41,6 +43,7 @@ from src.predictor import Predictor
 from src.anomaly_detection import AnomalyDetector
 from src.risk_engine import RiskEngine
 from src.alerts import AlertSystem
+from src.services.ai_service import AIService, InMemoryRepository, SensorReading as AISensorReading
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +59,8 @@ _predictor: Optional[Predictor] = None
 _risk_engine = RiskEngine()
 _alert_system = AlertSystem()
 _anomaly_detector = AnomalyDetector()
+_ai_service: Optional[AIService] = None
+_repository = InMemoryRepository()
 
 
 def initialize_model():
@@ -76,6 +81,19 @@ def initialize_model():
             _model = None
     else:
         logger.info("ℹ️ Modelo no encontrado. Entrene el modelo primero con main.py")
+
+    # Inicializar AI Service
+    global _ai_service
+    if _model is not None:
+        _ai_service = AIService(
+            preprocessor=_preprocessor,
+            lstm_model=_model,
+            risk_engine=_risk_engine,
+            alert_system=_alert_system,
+            repository=_repository,
+            anomaly_detector=_anomaly_detector,
+        )
+        logger.info("✅ AI Service inicializado para API")
 
 
 def _readings_to_df(readings) -> pd.DataFrame:
@@ -300,3 +318,60 @@ async def analyze(request: AnalysisRequest):
     except Exception as e:
         logger.error(f"Error en análisis: {e}")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
+
+@router.post("/ingest", response_model=IngestResponse, tags=["Tiempo Real"])
+async def ingest_sensor_reading(request: IngestRequest):
+    """
+    Endpoint de ingestión de sensores en tiempo real.
+
+    Recibe una nueva lectura, ejecuta el pipeline completo de ML inmediatamente,
+    y devuelve el score de riesgo, predicciones, anomalías y alertas.
+    """
+    timestamp = request.timestamp or datetime.now().isoformat()
+
+    reading = AISensorReading(
+        silo_id=request.silo_id,
+        timestamp=timestamp,
+        temperature=request.temperature,
+        humidity=request.humidity,
+        co2=request.co2,
+    )
+
+    if _ai_service is None:
+        # Fallback: usar motor de riesgo directamente sin LSTM
+        sensor_vals = {
+            "temperature": request.temperature,
+            "humidity": request.humidity,
+            "co2": request.co2,
+        }
+        risk_factors = _risk_engine.get_risk_factors(sensor_vals)
+        alerts = _alert_system.generate_alerts(risk_factors)
+        return IngestResponse(
+            status="partial",  # no hay LSTM disponible
+            silo_id=request.silo_id,
+            timestamp=timestamp,
+            risk_score=risk_factors["total_score"],
+            risk_level=risk_factors["level"],
+            predictions={},
+            anomalies={},
+            alerts=[{"level": a.level, "message": a.message} for a in alerts],
+            metadata={"note": "LSTM no disponible, resultado solo con reglas de riesgo"},
+        )
+
+    try:
+        result = _ai_service.ingest_and_analyze(reading)
+        return IngestResponse(
+            status="ok",
+            silo_id=result.silo_id,
+            timestamp=result.timestamp,
+            risk_score=result.risk_score,
+            risk_level=result.risk_level,
+            predictions=result.predictions,
+            anomalies=result.anomalies,
+            alerts=result.alerts,
+            metadata=result.metadata,
+        )
+    except Exception as e:
+        logger.error(f"Error en /ingest: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

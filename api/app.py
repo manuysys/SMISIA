@@ -76,6 +76,7 @@ async def root():
             "health": "/api/v1/health",
             "predict": "/api/v1/predict",
             "analyze": "/api/v1/analyze",
+            "ingest": "/api/v1/ingest",
             "model_status": "/api/v1/model/status",
         },
     }

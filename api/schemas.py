@@ -117,3 +117,30 @@ class ModelStatusResponse(BaseModel):
     architecture: str = ""
     n_parameters: int = 0
     last_trained: Optional[str] = None
+
+
+# =============================================================================
+# REAL-TIME INGESTION SCHEMAS
+# =============================================================================
+
+
+class IngestRequest(BaseModel):
+    """Single sensor reading for real-time ingestion."""
+    silo_id: str = Field(default="SILO_001")
+    timestamp: Optional[str] = None  # defaults to now
+    temperature: float = Field(..., ge=-10, le=60)
+    humidity: float = Field(..., ge=0, le=100)
+    co2: float = Field(..., ge=200, le=5000)
+
+
+class IngestResponse(BaseModel):
+    """Response from /ingest endpoint."""
+    status: str
+    silo_id: str
+    timestamp: str
+    risk_score: int
+    risk_level: str
+    predictions: dict
+    anomalies: dict
+    alerts: list
+    metadata: dict
